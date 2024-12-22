@@ -1,0 +1,12 @@
+Python Version 3.10.10
+
+
+python -m venv .venv
+.venv/Scripts/Activate
+
+pip install tensorflow==2.18.0 
+pip install pandas==2.2.3 
+pip install scikit-learn==1.6.0
+pip install scipy==1.14.1
+pip install statsmodels==0.14.4
+pip install matplotlib==3.9.3
