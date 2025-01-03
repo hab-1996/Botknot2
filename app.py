@@ -327,12 +327,50 @@ def info(product_name):
     info_text = product_details.get(product_name, "No information available.")
     return f"Information about {product_name}: {info_text}"
 
+# @app.route('/cart_add/<product_name>')
+# def cart_add(product_name):
+#     products = load_products()  # Load all products
+#     for product in products:
+#         if product['name'] == product_name:
+#             session['cart'].append(product)  # Add product to the session cart
+#             session.modified = True  # Notify Flask to update session
+#             flash(f'{product_name} has been added to your cart!', 'success')
+#             break
+#     else:
+#         flash(f'Product {product_name} not found.', 'error')
+#     return redirect(url_for('dashboard', user_id=session.get('user_id')))
+
+@app.route('/cart_update/<item_name>', methods=['POST'])
+def cart_update(item_name):
+    quantity = int(request.form['quantity'])
+    for item in session['cart']:
+        if item['name'] == item_name:
+            item['quantity'] = quantity
+            flash(f"Updated {item_name}'s quantity to {quantity}.", 'success')
+            break
+    session.modified = True  # Ensure session updates
+    return redirect(url_for('cart'))
+
+@app.route('/cart_remove/<item_name>', methods=['POST'])
+def cart_remove(item_name):
+    session['cart'] = [item for item in session['cart'] if item['name'] != item_name]
+    flash(f"Removed {item_name} from your cart.", 'info')
+    session.modified = True
+    return redirect(url_for('cart'))
+
+# When adding to the cart, include a default quantity of 1
 @app.route('/cart_add/<product_name>')
 def cart_add(product_name):
     products = load_products()  # Load all products
     for product in products:
         if product['name'] == product_name:
-            session['cart'].append(product)  # Add product to the session cart
+            for item in session['cart']:
+                if item['name'] == product_name:
+                    item['quantity'] += 1  # Increment quantity if already in cart
+                    break
+            else:
+                product['quantity'] = 1  # Add new item with quantity 1
+                session['cart'].append(product)
             session.modified = True  # Notify Flask to update session
             flash(f'{product_name} has been added to your cart!', 'success')
             break

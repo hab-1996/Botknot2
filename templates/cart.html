@@ -71,18 +71,32 @@
     </style>
 </head>
 <body>
+
     <div class="cart-container">
         <h1>Your Cart</h1>
         {% if cart %}
+            {% set total_price = 0 %}
             {% for item in cart %}
             <div class="cart-item">
                 <img src="{{ url_for('static', filename=item.image.split('static/')[-1]) }}" alt="{{ item.name }}">
                 <div class="cart-item-info">
                     <h4>{{ item.name }}</h4>
                     <p>Price: €{{ item.price }}</p>
+                    <p>Quantity: 
+                        <form action="{{ url_for('cart_update', item_name=item.name) }}" method="post" style="display:inline;">
+                            <input type="number" name="quantity" value="{{ item.quantity }}" min="1">
+                            <button type="submit">Update</button>
+                        </form>
+                    </p>
                 </div>
+                <form action="{{ url_for('cart_remove', item_name=item.name) }}" method="post" style="display:inline;">
+                    <button type="submit">Remove</button>
+                </form>
             </div>
+            {% set total_price = total_price + (item.price * item.quantity) %}
             {% endfor %}
+            <hr>
+            <h3>Total Price: €{{ total_price }}</h3>
         {% else %}
             <p>Your cart is empty.</p>
         {% endif %}
@@ -92,5 +106,8 @@
             {% endif %}
         </div>
     </div>
+    
+
+
 </body>
 </html>
