@@ -174,7 +174,7 @@
         }
 
         /* Product Card */
-        .product-card {
+        /* .product-card {
             background-color: white;
             color: black;
             border-radius: 10px;
@@ -183,19 +183,42 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
             cursor: pointer;
             margin-bottom: 15px;
-        }
+        } */
 
         .product-card:hover {
             box-shadow: 0 6px 10px rgba(0, 0, 0, 0.3);
         }
 
-        .product-card img {
+        /* .product-card img {
             width: 120px;
             height: 120px;
             object-fit: cover;
             border-radius: 10px;
             margin-bottom: 10px;
-        }
+        } */
+
+        .product-card {
+    background-color: white;
+    color: black;
+    border-radius: 10px;
+    text-align: center;
+    padding: 15px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    margin-bottom: 15px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.product-card img {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 10px;
+    margin-bottom: 10px;
+}
 
         .product-card h3 {
             margin: 10px 0;
@@ -232,38 +255,113 @@
         }
 
         .modal {
-        display: none; /* Hidden by default */
-        position: fixed;
-        z-index: 1000;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        background-color: rgba(0, 0, 0, 0.5);
-    }
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent background */
+}
 
-    .modal-content {
-        background-color: #fff;
-        margin: 10% auto;
-        padding: 20px;
-        border-radius: 10px;
-        width: 50%;
-        position: relative;
-    }
+.modal-content {
+    background-color: #fff;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 10px;
+    width: 90%; /* Adjust for smaller screens */
+    max-width: 900px;
+    position: relative;
+    text-align: center; /* Center-align content */
+}
 
-    .close-btn {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        font-size: 1.5rem;
-        cursor: pointer;
-    }
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #555;
+}
 
-    .modal-content img {
-        max-width: 100%;
-        border-radius: 5px;
-    }
+.close-btn:hover {
+    color: #000;
+}
+
+.modal-content img {
+    max-width: 100%;
+    height: 40%;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.modal-content h2 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.modal-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+    text-align: left; /* Align text for lists */
+}
+
+.modal-content ul li {
+    margin-bottom: 10px;
+    font-size: 1rem;
+    color: #555;
+}
+.modal-row {
+    display: flex;
+    flex-wrap: wrap; /* Ensures responsiveness */
+    gap: 20px;
+    align-items: flex-start;
+}
+
+.modal-col {
+    flex: 1;
+    padding: 10px;
+    min-width: 250px; /* Adjust based on design */
+}
+
+.modal-col.details {
+    text-align: left;
+}
+
+.modal-col.image img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+.similar-products-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+.similar-products-table th, 
+.similar-products-table td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: center;
+}
+
+.similar-products-table th {
+    background-color: #f4f4f4;
+    font-weight: bold;
+}
+
+.similar-products-table tr:hover {
+    background-color: #f9f9f9;
+}
+
+
     </style>
 </head>
 <body>
@@ -327,28 +425,54 @@
             <div class="modal-content">
                 <span class="close-btn" onclick="closeModal()">&times;</span>
                 {% if selected_product %}
-                <h2>Details for {{ selected_product }}</h2>
-        
-                {% if summary_data %}
-                <ul>
-                    <li><strong>Serial Number:</strong> {{ summary_data.Serial_Number }}</li>
-                    <li><strong>Item Code:</strong> {{ summary_data.Item_Code }}</li>
-                    <li><strong>Price for Tomorrow:</strong> €{{ summary_data.Price_for_Tomorrow }}</li>
-                    <li><strong>Price After 7 Days:</strong> €{{ summary_data.Price_After_7_Days }}</li>
-                    <li><strong>Price After 1 Month:</strong> €{{ summary_data.Price_After_1_Month }}</li>
-                </ul>
-                {% endif %}
-        
+                <div class="modal-row">
+                    <div class="modal-col details">
+                        <h2>Details for {{ selected_product }}</h2>
+                        {% if summary_data %}
+                        <ul>
+                            <li><strong>Serial Number:</strong> {{ summary_data.Serial_Number }}</li>
+                            <li><strong>Item Code:</strong> {{ summary_data.Item_Code }}</li>
+                            <li><strong>Price for Tomorrow:</strong> €{{ summary_data.Price_for_Tomorrow }}</li>
+                            <li><strong>Price After 7 Days:</strong> €{{ summary_data.Price_After_7_Days }}</li>
+                            <li><strong>Price After 1 Month:</strong> €{{ summary_data.Price_After_1_Month }}</li>
+                        </ul>
+                        {% endif %}
+                    </div>
+                    <div class="modal-col image">
+                        <img src="" alt="Product Image" id="modal-image">
+                    </div>
+                </div>
                 {% if plot_url %}
                 <h3>Price Trend</h3>
                 <img src="data:image/png;base64,{{ plot_url }}" alt="Price Trend">
                 {% endif %}
-        
+                <h3>Similar Product Status in Different Supermarkets</h3>
+                <table class="similar-products-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Netto</th>
+                            <th>Rewe</th>
+                            <th>Penny</th>
+                            <th>Aldi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Apple</td>
+                            <td>71</td>
+                            <td>45</td>
+                            <td>44</td>
+                            <td>11</td>
+                        </tr>
+                    </tbody>
+                </table>
                 {% else %}
                 <p>Select a product to view its details.</p>
                 {% endif %}
             </div>
         </div>
+        
         
     </div>
 
@@ -367,6 +491,10 @@
         const productElement = document.querySelector(`#product-${productName.replace(/\s+/g, '-')}`);
         if (productElement) {
             productElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const productImage = productElement.querySelector('img').src;
+
+// Replace the modal image src with the product image src
+document.getElementById('modal-image').src = productImage;
         }
         
         // Open the modal for the selected product
