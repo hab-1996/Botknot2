@@ -348,7 +348,8 @@ def cart_update(item_name):
             item['quantity'] = quantity
             flash(f"Updated {item_name}'s quantity to {quantity}.", 'success')
             break
-    session.modified = True  # Ensure session updates
+    session.modified = True  # Notify Flask to update session
+    flash(f"Cart total updated to €{calculate_total_price(session['cart']):.2f}", 'info')
     return redirect(url_for('cart'))
 
 @app.route('/cart_remove/<item_name>', methods=['POST'])
@@ -357,6 +358,13 @@ def cart_remove(item_name):
     flash(f"Removed {item_name} from your cart.", 'info')
     session.modified = True
     return redirect(url_for('cart'))
+
+def calculate_total_price(cart):
+    try:
+        return round(sum(item['price'] * item['quantity'] for item in cart), 2)
+    except KeyError:
+        print("Cart item missing price or quantity.")
+        return 0
 
 # When adding to the cart, include a default quantity of 1
 @app.route('/cart_add/<product_name>')
@@ -380,7 +388,10 @@ def cart_add(product_name):
 
 @app.route('/cart')
 def cart():
-    return render_template('cart.html', cart=session['cart'])
+    cart = session.get('cart', [])
+    total_price = calculate_total_price(cart)
+    print("Cart content:", cart)  # Debugging
+    return render_template('cart.html', cart=cart, total_price=total_price)
 
 @app.route('/cart_clear')
 def cart_clear():
