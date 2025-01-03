@@ -1,19 +1,23 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, session, render_template, request, redirect, url_for, flash
 from openpyxl import Workbook, load_workbook
 import os
 import pandas as pd
-from statsmodels.tsa.arima.model import ARIMA
-import matplotlib.pyplot as plt
+import pickle
 from datetime import timedelta
 from scipy.ndimage import gaussian_filter1d
-import pickle
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+from io import BytesIO
+import base64
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+app.secret_key = 'your_secret_key'  # Needed for flash messages
 
-EXCEL_FILE = 'Datasets/User_Information/user_data.xlsx'
+# Define Excel file for storing user data
+EXCEL_FILE = 'user_data.xlsx'
+PRODUCT_EXCEL_FILE = 'Web_Scraping.xlsx'
 
-# Mapping of Item Name to Item Code
 ITEM_CODE_MAPPING = {
     "Allgäuer Hof-Milch Butter mild gesäuert 250g": "101",
     "Bio Aubergine 1 Stück": "201",
@@ -39,7 +43,6 @@ ITEM_CODE_MAPPING = {
     "ja! Sonnenblumenöl 1l": "2201"
 }
 
-# Mapping of Item Code to Item English Name
 ITEM_CODE_TO_ENGLISH_NAME = {
     "101": "Butter Mildly Soured",
     "201": "Eggplant",
@@ -65,20 +68,67 @@ ITEM_CODE_TO_ENGLISH_NAME = {
     "2201": "Sunflower Oil"
 }
 
+def initialize_excel():
+    if not os.path.exists(EXCEL_FILE):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Users'
+        ws.append(['UserID', 'Password'])  # Headers
+        wb.save(EXCEL_FILE)
+
+def load_products():
+    try:
+        wb = load_workbook(PRODUCT_EXCEL_FILE)
+        ws = wb.active
+
+        # Add new columns if they do not exist
+        headers = [cell.value for cell in ws[1]]  # Get existing headers
+
+        if "Item Code" not in headers:
+            ws.cell(row=1, column=len(headers) + 1, value="Item Code")
+            headers.append("Item Code")
+        if "English Name" not in headers:
+            ws.cell(row=1, column=len(headers) + 1, value="English Name")
+            headers.append("English Name")
+
+        product_name_idx = headers.index("Product Name") + 1
+        item_code_idx = headers.index("Item Code") + 1
+        english_name_idx = headers.index("English Name") + 1
+
+        # Update the Excel file with mappings
+        for row in ws.iter_rows(min_row=2, max_col=len(headers)):
+            product_name = row[product_name_idx - 1].value
+            if product_name in ITEM_CODE_MAPPING:
+                item_code = ITEM_CODE_MAPPING[product_name]
+                row[item_code_idx - 1].value = item_code
+                english_name = ITEM_CODE_TO_ENGLISH_NAME.get(item_code, "Unknown")
+                row[english_name_idx - 1].value = english_name
+
+        wb.save(PRODUCT_EXCEL_FILE)  # Save updated file
+
+        # Load products into a list
+        products = []
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if all(row):
+                product = {
+                    'name': row[product_name_idx - 1],
+                    'price': row[1],
+                    'tomorrow_price': row[2],
+                    'image': row[3],
+                    'item_code': row[item_code_idx - 1],
+                    'english_name': row[english_name_idx - 1]
+                }
+                products.append(product)
+
+        return products
+    except Exception as e:
+        print("Error loading products:", e)
+        return []
+
 def predict_and_save(item_name, models, data, steps=90, output_folder="Datasets/Output/Price_Prediction", csv_file="Datasets/Output/Price_Prediction/Item_lists.csv"):
     if item_name not in models:
         print(f"No model found for item: {item_name}")
-        return
-
-    # Create output directories
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    #item_folder = os.path.join(output_folder, item_name.replace(' ', '_'))
-    item_folder = os.path.join(output_folder, 'Plots')
-    
-    if not os.path.exists(item_folder):
-        os.makedirs(item_folder)
+        return None, None
 
     model = models[item_name]
     item_data = data[data['Items'] == item_name]
@@ -96,11 +146,7 @@ def predict_and_save(item_name, models, data, steps=90, output_folder="Datasets/
     # Smooth forecasted prices
     smoothed_forecast = gaussian_filter1d(forecast, sigma=2)
 
-    # Combine historical and forecasted data
-    combined_index = daily_prices.index.append(future_dates)
-    combined_values = list(smoothed_prices) + list(smoothed_forecast)
-
-    # Save forecast to CSV
+    # Save forecast to summary data
     price_for_tomorrow = forecast.iloc[0]
     price_after_7_days = forecast.iloc[7] if len(forecast) > 7 else None
     price_after_1_month = forecast.iloc[30] if len(forecast) > 30 else None
@@ -109,120 +155,215 @@ def predict_and_save(item_name, models, data, steps=90, output_folder="Datasets/
     item_english_name = ITEM_CODE_TO_ENGLISH_NAME.get(item_code, "Unknown")
 
     summary_data = {
-        "Serial_Number": [len(pd.read_csv(csv_file)) + 1 if os.path.exists(csv_file) else 1],
-        "Item_Code": [item_code],
-        "Item_Name": [item_name],
-        "Price_for_Tomorrow": [price_for_tomorrow],
-        "Price_After_7_Days": [price_after_7_days],
-        "Price_After_1_Month": [price_after_1_month]
+        "Serial_Number": len(pd.read_csv(csv_file)) + 1 if os.path.exists(csv_file) else 1,
+        "Item_Code": item_code,
+        "Item_Name": item_name,
+        "Price_for_Tomorrow": price_for_tomorrow,
+        "Price_After_7_Days": price_after_7_days,
+        "Price_After_1_Month": price_after_1_month
     }
-
-    summary_df = pd.DataFrame(summary_data)
-
-    # Append to CSV if file exists, otherwise create
-    if os.path.exists(csv_file):
-        summary_df.to_csv(csv_file, mode='a', header=False, index=False)
-    else:
-        summary_df.to_csv(csv_file, index=False)
-
-    
-    print(f"Item's information added to {csv_file}")
-    
-
 
     # Plot
     plt.figure(figsize=(12, 6))
-    plt.plot(daily_prices.index, smoothed_prices, label="Actual Price", linewidth=2,linestyle='-', color="blue")
-    plt.plot(future_dates, smoothed_forecast, label="Predicted Price (Next 90 Days)", linewidth=3,linestyle='-', color='orange')
+    plt.plot(daily_prices.index, smoothed_prices, label="Actual Price", linewidth=2, linestyle='-', color="blue")
+    plt.plot(future_dates, smoothed_forecast, label="Predicted Price (Next 90 Days)", linewidth=3, linestyle='-', color='orange')
     plt.title(f"Price Trend for {item_english_name}", fontsize=16)
     plt.ylabel("Price (€)")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
 
-    # Save plot
-    plot_file = os.path.join(item_folder, f"{item_code.replace(' ', '_')}.png")
-    plt.savefig(plot_file)
+    # Save plot to a BytesIO object
+    buf = BytesIO()
+    plt.savefig(buf, format="png")
+    buf.seek(0)
+    plot_url = base64.b64encode(buf.getvalue()).decode("utf-8")
+    buf.close()
     plt.close()
-    print(f"Plot saved to {plot_file}")
 
-# Initialize Excel file and ensure headers exist
-def initialize_excel():
-    if not os.path.exists(EXCEL_FILE):
-        # Create a new Excel file with headers
-        wb = Workbook()
-        ws = wb.active
-        ws.title = 'Users'
-        ws.append(['Customer_ID', 'First_Name', 'Last_Name', 'Email', 'Country', 'City', 'Address', 'Password'])
-        wb.save(EXCEL_FILE)
-        print("Initialized 'user_data.xlsx' with headers.")
+    return summary_data, plot_url
 
+@app.route('/product/<product_name>')
+def product_details(product_name):
+    grocery_data = pd.read_csv('Datasets/Price_Predictions/grocery_items_bavaria.csv')
+    grocery_data.rename(columns={'name': 'Items'}, inplace=True)
+
+    models_folder = "Model/Price_Prediction/arima"
+    with open(os.path.join(models_folder, "arima_models.pkl"), 'rb') as f:
+        loaded_models = pickle.load(f)
+
+    summary_data, plot_url = predict_and_save(product_name, loaded_models, grocery_data)
+
+    if summary_data is None or plot_url is None:
+        flash("Unable to fetch product details.", "error")
+        return redirect(url_for("dashboard", user_id=session.get("user_id")))
+
+    return render_template("product_details.html", product_name=product_name, summary_data=summary_data, plot_url=plot_url)
+
+@app.before_request
+def initialize_cart():
+    if 'cart' not in session:
+        session['cart'] = []  # Initialize cart as an empty list
 
 @app.route('/')
-def login_page():
+def home():
     return render_template('login.html')
+
+@app.route('/login', methods=['POST'])
+def login():
+    user_id = request.form['user_id']
+    password = request.form['password']
+
+    wb = load_workbook(EXCEL_FILE)
+    ws = wb.active
+
+    user_found = False
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if row[0] == user_id:
+            user_found = True
+            if row[1] == password:
+                 # Store user details in session
+                session['user_id'] = user_id
+                return redirect(url_for('dashboard', user_id=user_id))
+            else:
+                flash('Wrong password. Please try again.', 'error')
+                return redirect(url_for('home'))
+
+    if not user_found:
+        flash('User ID not found. Please sign up if you are not registered.', 'error')
+    return redirect(url_for('home'))
+
+@app.route('/dashboard/<user_id>')
+def dashboard(user_id):
+    search_query = request.args.get('search_query', '').strip().lower()
+    selected_product = request.args.get('product_name', '').strip()
+
+    # Load products
+    products = load_products()
+
+    # Filter products if search query is provided
+    if search_query:
+        products = [product for product in products if search_query in product['name'].lower()]
+        if not products:
+            flash('Product not available.', 'error')
+
+    # Prepare data for the selected product
+    summary_data = None
+    plot_url = None
+    if selected_product:
+        grocery_data = pd.read_csv('Datasets/Price_Predictions/grocery_items_bavaria.csv')
+        grocery_data.rename(columns={'name': 'Items'}, inplace=True)
+
+        models_folder = "Model/Price_Prediction/arima"
+        with open(os.path.join(models_folder, "arima_models.pkl"), 'rb') as f:
+            loaded_models = pickle.load(f)
+
+        summary_data, plot_url = predict_and_save(selected_product, loaded_models, grocery_data)
+
+    return render_template(
+        'dashboard.html',
+        user_id=user_id,
+        products=products,
+        search_query=search_query,
+        selected_product=selected_product,
+        summary_data=summary_data,
+        plot_url=plot_url
+    )
+
+
+@app.route('/logout')
+def logout():
+    session.clear()  # Clear session
+    flash('You have been logged out successfully!', 'info')
+    return redirect(url_for('home'))
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        # Collect form data
-        first_name = request.form['first_name']
-        last_name = request.form['last_name']
-        email = request.form['email']
-        country = request.form['country']
-        city = request.form['city']
-        address = request.form['address']
+        user_id = request.form['user_id']
         password = request.form['password']
 
-        # Load Excel file
         wb = load_workbook(EXCEL_FILE)
         ws = wb.active
 
-        # Ensure headers are intact before appending data
-        if ws.cell(1, 1).value != 'Customer_ID':
-            ws.insert_rows(1)
-            ws.append(['Customer_ID', 'First_Name', 'Last_Name', 'Email', 'Country', 'City', 'Address', 'Password'])
-
-        # Check for duplicate email
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row and row[3] == email:  # Email is in the 4th column
-                flash('Email already exists! Please log in.', 'error')
+            if row[0] == user_id:
+                flash('User ID already exists!', 'error')
                 return redirect(url_for('signup'))
 
-        # Determine the next Customer_ID
-        last_customer_id = 1000
-        for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
-            if row[0] and isinstance(row[0], int):  # Ensure valid Customer_IDs
-                last_customer_id = max(last_customer_id, int(row[0]))
-
-        new_customer_id = last_customer_id + 1
-
-        # Append new user data to Excel
-        ws.append([new_customer_id, first_name, last_name, email, country, city, address, password])
+        ws.append([user_id, password])
         wb.save(EXCEL_FILE)
-
         flash('Sign up successful! Please log in.', 'success')
-        return redirect(url_for('login_page'))
+        return redirect(url_for('home'))
 
     return render_template('signup.html')
 
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        user_id = request.form['user_id']
+
+        wb = load_workbook(EXCEL_FILE)
+        ws = wb.active
+
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[0] == user_id:
+                flash(f'Password for {user_id} is: {row[1]}', 'info')
+                return redirect(url_for('home'))
+
+        flash('User ID not found!', 'error')
+        return redirect(url_for('forgot_password'))
+
+    return render_template('forgot_password.html')
+
+@app.route('/info/<product_name>')
+def info(product_name):
+    # Example: Fetch product details
+    product_details = {
+        'Apple': 'Apples are rich in fiber and vitamins.',
+        'Broccoli': 'Broccoli is a great source of vitamins K and C.',
+        # Add more products as needed
+    }
+    info_text = product_details.get(product_name, "No information available.")
+    return f"Information about {product_name}: {info_text}"
+
+@app.route('/cart_add/<product_name>')
+def cart_add(product_name):
+    products = load_products()  # Load all products
+    for product in products:
+        if product['name'] == product_name:
+            session['cart'].append(product)  # Add product to the session cart
+            session.modified = True  # Notify Flask to update session
+            flash(f'{product_name} has been added to your cart!', 'success')
+            break
+    else:
+        flash(f'Product {product_name} not found.', 'error')
+    return redirect(url_for('dashboard', user_id=session.get('user_id')))
+
+@app.route('/cart')
+def cart():
+    return render_template('cart.html', cart=session['cart'])
+
+@app.route('/cart_clear')
+def cart_clear():
+    session['cart'] = []  # Empty the cart
+    session.modified = True
+    flash('Your cart has been cleared.', 'info')
+    return redirect(url_for('cart'))
+
 if __name__ == '__main__':
-    # Replace with the actual input file path
     grocery_data = pd.read_csv('Datasets/Price_Predictions/grocery_items_bavaria.csv')
     grocery_data.rename(columns={'name': 'Items'}, inplace=True)
 
-    # Delete the CSV file if it exists
     csv_file_path = "Datasets/Output/Price_Prediction/Item_lists.csv"
     if os.path.exists(csv_file_path):
         os.remove(csv_file_path)
         print(f"Existing file {csv_file_path} has been deleted.")
 
-    # Load models from the folder
     models_folder = "Model/Price_Prediction/arima"
     with open(os.path.join(models_folder, "arima_models.pkl"), 'rb') as f:
         loaded_models = pickle.load(f)
 
-    # Predict, save, and plot for specific items
     items_to_predict = [
         "Allgäuer Hof-Milch Butter mild gesäuert 250g",
         "Bio Aubergine 1 Stück",
@@ -246,11 +387,10 @@ if __name__ == '__main__':
         "ja! Basmati Reis 1kg",
         "ja! H-Milch 3,5% 1",
         "ja! Sonnenblumenöl 1l"
-
     ]
 
     for item_name in items_to_predict:
         predict_and_save(item_name, loaded_models, grocery_data)
-           
+
     initialize_excel()
     app.run(debug=True)
